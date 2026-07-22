@@ -216,8 +216,69 @@ export class UIController {
     hud.appendChild(overlay);
   }
 
+  /** Show a brief warning flash overlay before a gate arrives */
+  showWarningFlash(): void {
+    const hud = this.container;
+    if (!hud) return;
+
+    // Remove any existing warning
+    const existing = hud.querySelector("#warning-flash");
+    if (existing) existing.remove();
+
+    const flash = document.createElement("div");
+    flash.id = "warning-flash";
+    flash.style.cssText = `
+      position: absolute; inset: 0;
+      background: rgba(255, 59, 59, 0.08);
+      pointer-events: none;
+      z-index: 50;
+      animation: warningPulse 0.5s ease-out forwards;
+    `;
+
+    // Inject keyframes
+    const style = document.createElement("style");
+    style.textContent = `
+      @keyframes warningPulse {
+        0% { background: rgba(255, 59, 59, 0.12); }
+        50% { background: rgba(255, 59, 59, 0.06); }
+        100% { background: rgba(255, 59, 59, 0); }
+      }
+    `;
+    flash.appendChild(style);
+    hud.appendChild(flash);
+
+    // Also add a "GET READY" text at the bottom
+    const readyText = document.createElement("div");
+    readyText.textContent = "GET READY";
+    readyText.style.cssText = `
+      position: absolute; bottom: 80px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 22px; font-weight: 700; color: #FF3B3B;
+      letter-spacing: 3px;
+      text-shadow: 0 0 20px rgba(255, 59, 59, 0.6);
+      animation: warningTextFade 0.6s ease-out forwards;
+    `;
+
+    const textStyle = document.createElement("style");
+    textStyle.textContent = `
+      @keyframes warningTextFade {
+        0% { opacity: 1; transform: translateX(-50%) scale(1.1); }
+        70% { opacity: 1; }
+        100% { opacity: 0; transform: translateX(-50%) scale(0.9); }
+      }
+    `;
+    readyText.appendChild(textStyle);
+    flash.appendChild(readyText);
+
+    // Auto-remove after animation
+    setTimeout(() => {
+      const el = hud.querySelector("#warning-flash");
+      if (el) el.remove();
+    }, 600);
+  }
+
   /** Show game over screen */
-  showGameOver(score: number, highScore: number, isHighScore: boolean, onRestart: () => void): void {
+  showGameOver(score: number, combo: number, highScore: number, isHighScore: boolean, onRestart: () => void): void {
     const hud = this.container;
     if (!hud) return;
     hud.innerHTML = "";
@@ -257,11 +318,21 @@ export class UIController {
     `;
     overlay.appendChild(scoreText);
 
+    // Combo display
+    const comboText = document.createElement("div");
+    comboText.textContent = `${combo}x Combo`;
+    comboText.style.cssText = `
+      font-size: 22px; color: #FFD60A; font-weight: 700;
+      margin-bottom: 4px;
+      text-shadow: 0 0 12px rgba(255,214,10,0.4);
+    `;
+    overlay.appendChild(comboText);
+
     const hsText = document.createElement("div");
     hsText.textContent = `Best: ${highScore}`;
     hsText.style.cssText = `
-      font-size: 20px; color: #FFD60A; font-weight: 700;
-      margin-bottom: 8px;
+      font-size: 20px; color: rgba(255,255,255,0.5); font-weight: 600;
+      margin-bottom: 16px;
     `;
     overlay.appendChild(hsText);
 
@@ -277,16 +348,79 @@ export class UIController {
       overlay.appendChild(newBest);
     }
 
+    // Buttons row
+    const btnRow = document.createElement("div");
+    btnRow.style.cssText = `
+      display: flex; gap: 12px; margin-top: 16px;
+      align-items: center;
+    `;
+
+    // Share Score button
+    const shareBtn = document.createElement("button");
+    shareBtn.id = "hud-share-btn";
+    shareBtn.textContent = "SHARE SCORE";
+    shareBtn.style.cssText = `
+      padding: 14px 28px; font-size: 16px; font-weight: 700;
+      color: #fff; background: linear-gradient(135deg, #2EC4B6, #00B4D8);
+      border: none; border-radius: 12px; cursor: pointer;
+      box-shadow: 0 4px 20px rgba(46,196,182,0.3);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      pointer-events: auto;
+    `;
+    shareBtn.addEventListener("pointerdown", () => {
+      shareBtn.style.transform = "scale(0.95)";
+    });
+    shareBtn.addEventListener("click", () => {
+      shareBtn.style.transform = "scale(1)";
+      // Copy score to clipboard
+      const shareText = `I scored ${score} with a ${combo}x combo in Color Switch Rush! Can you beat my best of ${highScore}?`;
+
+      const showCopied = () => {
+        shareBtn.textContent = "COPIED!";
+        shareBtn.style.background = "linear-gradient(135deg, #FFD60A, #FF9F1C)";
+        setTimeout(() => {
+          shareBtn.textContent = "SHARE SCORE";
+          shareBtn.style.background = "linear-gradient(135deg, #2EC4B6, #00B4D8)";
+        }, 1500);
+      };
+
+      // Try clipboard API first, fallback to execCommand
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(shareText).then(showCopied).catch(() => {
+          // Fallback
+          const ta = document.createElement("textarea");
+          ta.value = shareText;
+          ta.style.cssText = "position:fixed;left:-9999px;top:-9999px";
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand("copy"); } catch (e) { /* ignore */ }
+          document.body.removeChild(ta);
+          showCopied();
+        });
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = shareText;
+        ta.style.cssText = "position:fixed;left:-9999px;top:-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); } catch (e) { /* ignore */ }
+        document.body.removeChild(ta);
+        showCopied();
+      }
+    });
+    btnRow.appendChild(shareBtn);
+
+    // Play Again button
     const restartBtn = document.createElement("button");
     restartBtn.id = "hud-restart-btn";
     restartBtn.textContent = "PLAY AGAIN";
     restartBtn.style.cssText = `
-      padding: 16px 52px; font-size: 20px; font-weight: 700;
+      padding: 14px 28px; font-size: 16px; font-weight: 700;
       color: #fff; background: linear-gradient(135deg, #FF3B3B, #FF9F1C);
       border: none; border-radius: 12px; cursor: pointer;
       box-shadow: 0 4px 20px rgba(255,59,59,0.4);
       transition: transform 0.15s ease;
-      pointer-events: auto; margin-top: 12px;
+      pointer-events: auto;
     `;
     restartBtn.addEventListener("pointerdown", () => {
       restartBtn.style.transform = "scale(0.95)";
@@ -295,8 +429,9 @@ export class UIController {
       restartBtn.style.transform = "scale(1)";
       onRestart();
     });
-    overlay.appendChild(restartBtn);
+    btnRow.appendChild(restartBtn);
 
+    overlay.appendChild(btnRow);
     hud.appendChild(overlay);
   }
 
