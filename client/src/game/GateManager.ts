@@ -9,6 +9,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { COLORS, type ColorIndex } from "./types";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { SeededRandom } from "./SeededRandom";
 
 export interface GateData {
   mesh: Mesh;
@@ -24,18 +25,27 @@ export class GateManager {
   private baseRotationSpeed: number = 1.5;
   private nextSpawnY: number;
   private gateSpacing: number = 6; // units between gates
+  private rng: SeededRandom | null = null;
 
-  constructor(scene: Scene, startSpawnY: number) {
+  constructor(scene: Scene, startSpawnY: number, rng?: SeededRandom) {
     this.scene = scene;
     this.nextSpawnY = startSpawnY;
+    this.rng = rng ?? null;
+  }
+
+  setRNG(rng: SeededRandom): void {
+    this.rng = rng;
   }
 
   createGate(y: number): GateData {
-    // Randomize segment colors — shuffle all 6 colors
     const available = [0, 1, 2, 3, 4, 5];
-    for (let i = available.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [available[i], available[j]] = [available[j], available[i]];
+    if (this.rng) {
+      this.rng.shuffle(available);
+    } else {
+      for (let i = available.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [available[i], available[j]] = [available[j], available[i]];
+      }
     }
     const segmentColors = available as ColorIndex[];
 
@@ -79,7 +89,8 @@ export class GateManager {
       segmentMeshes.push(segment);
     }
 
-    const rotationSpeed = this.baseRotationSpeed + Math.random() * 0.8;
+    const randomOffset = this.rng ? this.rng.next() * 0.8 : Math.random() * 0.8;
+    const rotationSpeed = this.baseRotationSpeed + randomOffset;
 
     return {
       mesh: parentMesh,

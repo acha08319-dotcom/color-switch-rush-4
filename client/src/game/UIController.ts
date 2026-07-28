@@ -115,8 +115,8 @@ export class UIController {
     }
   }
 
-  /** Show the start menu */
-  showMenu(highScore: number, onStart: () => void): void {
+  /** Show the start menu (with optional daily best display) */
+  showMenu(highScore: number, dailyBest: number | undefined, onStart: () => void): void {
     const hud = this.container;
     if (!hud) return;
     hud.innerHTML = "";
@@ -181,6 +181,17 @@ export class UIController {
         margin-bottom: 20px;
       `;
       overlay.appendChild(hs);
+    }
+
+    // Daily best display
+    if (dailyBest !== undefined && dailyBest > 0) {
+      const db = document.createElement("div");
+      db.textContent = `Daily Best: ${dailyBest}`;
+      db.style.cssText = `
+        font-size: 14px; color: #FF9F1C; font-weight: 600;
+        margin-bottom: 8px;
+      `;
+      overlay.appendChild(db);
     }
 
     // Start button
@@ -433,6 +444,220 @@ export class UIController {
 
     overlay.appendChild(btnRow);
     hud.appendChild(overlay);
+  }
+
+  /** Show tutorial overlay on first launch */
+  showTutorial(onDismiss: () => void): void {
+    const hud = this.container;
+    if (!hud) return;
+    hud.innerHTML = "";
+
+    const overlay = document.createElement("div");
+    overlay.style.cssText = `
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      pointer-events: auto; padding: 40px;
+      background: radial-gradient(ellipse at center, rgba(10,10,46,0.85) 0%, rgba(5,5,20,0.95) 100%);
+      animation: hudFadeIn 0.4s ease-out;
+    `;
+
+    const style = document.createElement("style");
+    style.textContent = `
+      @keyframes hudFadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes floatUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    `;
+    overlay.appendChild(style);
+
+    // Title
+    const title = document.createElement("h1");
+    title.textContent = "HOW TO PLAY";
+    title.style.cssText = `
+      font-size: 42px; font-weight: 900; color: #fff;
+      margin: 0 0 8px 0; letter-spacing: 2px;
+      text-shadow: 0 0 30px rgba(155,93,229,0.5);
+    `;
+    overlay.appendChild(title);
+
+    const subtitle = document.createElement("div");
+    subtitle.textContent = "Match the colors. Survive the rush.";
+    subtitle.style.cssText = `
+      font-size: 16px; color: rgba(255,255,255,0.5);
+      margin-bottom: 36px; letter-spacing: 1px;
+    `;
+    overlay.appendChild(subtitle);
+
+    // Tutorial steps
+    const steps = [
+      { icon: "\u25CF", label: "YOUR BALL", desc: "Cycles through 6 colors. Tap or press Space to switch." },
+      { icon: "\u25CB", label: "COLOR GATES", desc: "Rotating rings with 6 colored segments. You must match!" },
+      { icon: "\u2713", label: "MATCH = SCORE", desc: "Pass through matching colors. Mismatch = game over!" },
+    ];
+
+    steps.forEach((step, i) => {
+      const stepEl = document.createElement("div");
+      stepEl.style.cssText = `
+        display: flex; align-items: flex-start; gap: 16px;
+        width: 100%; max-width: 440px; padding: 14px 20px;
+        background: rgba(255,255,255,0.04); border-radius: 12px;
+        margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.08);
+        animation: floatUp 0.4s ease-out ${0.15 + i * 0.1}s both;
+      `;
+
+      const icon = document.createElement("div");
+      icon.textContent = step.icon;
+      icon.style.cssText = `
+        font-size: 24px; color: #9B5DE5; flex-shrink: 0;
+        text-shadow: 0 0 10px rgba(155,93,229,0.4);
+      `;
+      stepEl.appendChild(icon);
+
+      const textWrap = document.createElement("div");
+      const label = document.createElement("div");
+      label.textContent = step.label;
+      label.style.cssText = `
+        font-size: 14px; font-weight: 700; color: #9B5DE5;
+        margin-bottom: 2px; letter-spacing: 1px;
+      `;
+      textWrap.appendChild(label);
+
+      const desc = document.createElement("div");
+      desc.textContent = step.desc;
+      desc.style.cssText = `
+        font-size: 13px; color: rgba(255,255,255,0.6); line-height: 1.4;
+      `;
+      textWrap.appendChild(desc);
+
+      stepEl.appendChild(textWrap);
+      overlay.appendChild(stepEl);
+    });
+
+    // Color demo
+    const demoDiv = document.createElement("div");
+    demoDiv.style.cssText = `
+      display: flex; align-items: center; gap: 8px;
+      margin-top: 20px; padding: 12px 20px;
+      background: rgba(155,93,229,0.08); border-radius: 10px;
+      border: 1px solid rgba(155,93,229,0.2);
+    `;
+
+    // Small color dots
+    for (const c of COLORS_HEX) {
+      const dot = document.createElement("div");
+      dot.style.cssText = `
+        width: 14px; height: 14px; border-radius: 50%;
+        background: ${c}; box-shadow: 0 0 8px ${c}60;
+      `;
+      demoDiv.appendChild(dot);
+    }
+
+    const arrow = document.createElement("div");
+    arrow.textContent = "\u2192";
+    arrow.style.cssText = `
+      font-size: 16px; color: rgba(255,255,255,0.3); margin-left: 4px;
+    `;
+    demoDiv.appendChild(arrow);
+
+    const demoText = document.createElement("div");
+    demoText.textContent = "Tap to cycle";
+    demoText.style.cssText = `
+      margin-left: 8px; font-size: 13px; color: rgba(255,255,255,0.4);
+    `;
+    demoDiv.appendChild(demoText);
+    overlay.appendChild(demoDiv);
+
+    // Combo tip
+    const comboTip = document.createElement("div");
+    comboTip.textContent = "Pro tip: Pass consecutive gates for a combo multiplier!";
+    comboTip.style.cssText = `
+      font-size: 13px; color: #FFD60A; margin-top: 20px; margin-bottom: 28px;
+      text-shadow: 0 0 10px rgba(255,214,10,0.3);
+    `;
+    overlay.appendChild(comboTip);
+
+    // Start button
+    const btn = document.createElement("button");
+    btn.textContent = "LET'S GO!";
+    btn.style.cssText = `
+      padding: 16px 64px; font-size: 20px; font-weight: 800;
+      color: #fff; background: linear-gradient(135deg, #9B5DE5, #00B4D8);
+      border: none; border-radius: 14px; cursor: pointer;
+      box-shadow: 0 4px 24px rgba(155,93,229,0.5);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      letter-spacing: 1px;
+    `;
+    btn.addEventListener("pointerdown", () => {
+      btn.style.transform = "scale(0.95)";
+    });
+    btn.addEventListener("pointerup", () => {
+      btn.style.transform = "scale(1)";
+      onDismiss();
+    });
+    overlay.appendChild(btn);
+
+    hud.appendChild(overlay);
+  }
+
+  /** Add a "Daily Challenge" button to the menu */
+  addDailyChallengeButton(onClick: () => void): void {
+    const hud = this.container;
+    if (!hud) return;
+
+    // Find the menu overlay
+    const menuOverlay = hud.querySelector('[style*="display: flex"]') as HTMLElement;
+    if (!menuOverlay) return;
+
+    // Check if button already exists
+    if (menuOverlay.querySelector("#hud-daily-btn")) return;
+
+    const btn = document.createElement("button");
+    btn.id = "hud-daily-btn";
+    btn.textContent = "DAILY CHALLENGE";
+    btn.style.cssText = `
+      padding: 12px 36px; font-size: 15px; font-weight: 700;
+      color: #fff; background: linear-gradient(135deg, #FF3B3B, #FF9F1C);
+      border: none; border-radius: 12px; cursor: pointer;
+      box-shadow: 0 4px 20px rgba(255,59,59,0.3);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      pointer-events: auto; margin-top: 16px;
+      letter-spacing: 1px;
+    `;
+    btn.addEventListener("pointerdown", () => {
+      btn.style.transform = "scale(0.95)";
+    });
+    btn.addEventListener("pointerup", () => {
+      btn.style.transform = "scale(1)";
+      onClick();
+    });
+    menuOverlay.appendChild(btn);
+  }
+
+  /** Show daily challenge score on game over */
+  updateGameOverForDaily(score: number, combo: number, dailyBest: number, isDailyBest: boolean): void {
+    const hud = this.container;
+    if (!hud) return;
+
+    // Find the game-over overlay
+    const overlays = hud.querySelectorAll('[style*="display: flex"]');
+    const gameoverOverlay = overlays[overlays.length - 1] as HTMLElement;
+    if (!gameoverOverlay) return;
+
+    // Find the button row and insert before it
+    const btnRow = gameoverOverlay.querySelector('[style*="gap"]') as HTMLElement;
+    const dailyEl = document.createElement("div");
+    dailyEl.style.cssText = `
+      font-size: 16px; color: #FF9F1C; font-weight: 700;
+      margin-top: 12px; padding: 8px 20px;
+      background: rgba(255,159,28,0.1); border-radius: 8px;
+      border: 1px solid rgba(255,159,28,0.3);
+    `;
+    dailyEl.textContent = isDailyBest ? `NEW DAILY BEST!` : `Daily Best: ${dailyBest}`;
+
+    if (btnRow) {
+      gameoverOverlay.insertBefore(dailyEl, btnRow);
+    } else {
+      gameoverOverlay.appendChild(dailyEl);
+    }
   }
 
   clearHUD(): void {

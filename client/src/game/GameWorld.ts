@@ -2,8 +2,9 @@
 // SCROLLING approach: ball stays at fixed Y, gates move DOWN toward it.
 // Camera is static. This ensures gates are always visible and collisions are reliable.
 //
-// NEW FEATURES: AudioManager for sound effects, warning cue before gate arrival,
-// color cycle sound, pass/crash/combo sounds.
+// FEATURES: AudioManager for sound effects, warning cue before gate arrival,
+// color cycle sound, pass/crash/combo sounds, screen shake on crash,
+// tutorial overlay on first launch, daily challenge mode with seeded RNG.
 
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
@@ -17,6 +18,11 @@ import { ParticleManager } from "./ParticleManager";
 import { UIController } from "./UIController";
 import { InputManager } from "./InputManager";
 import { AudioManager } from "./AudioManager";
+import { ScreenShake } from "./ScreenShake";
+import { DailyChallenge } from "./DailyChallenge";
+import { SeededRandom } from "./SeededRandom";
+
+const TUTORIAL_KEY = "colorSwitchRush_tutorialSeen";
 
 export class GameWorld {
   private scene: Scene;
@@ -29,19 +35,23 @@ export class GameWorld {
   private uiController: UIController;
   private inputManager: InputManager;
   private audioManager: AudioManager;
+  private screenShake: ScreenShake;
+  private dailyChallenge: DailyChallenge;
   private engine: Engine;
   private canvas: HTMLCanvasElement;
 
   // Game state
   private isPlaying = false;
   private isGameOver = false;
-  private fallSpeed: number = 5; // speed gates scroll down
-  public ballY: number = 0; // fixed position for the ball
+  private fallSpeed: number = 5;
+  public ballY: number = 0;
+
+  // Mode: "normal" or "daily"
+  private gameMode: "normal" | "daily" = "normal";
 
   // Warning cue tracking
   private warnedGates = new WeakSet();
-  private warningDistance: number = 5; // trigger warning when gate is this many units from ball
-  private lastColorCycled = false; // track color changes for sound debounce
+  private warningDistance: number = 5;
 
   constructor(
     engine: Engine,
@@ -58,6 +68,8 @@ export class GameWorld {
     this.scoreManager = new ScoreManager();
     this.uiController = new UIController();
     this.audioManager = new AudioManager();
+    this.screenShake = new ScreenShake(camera);
+    this.dailyChallenge = new DailyChallenge();
     this.inputManager = null as any;
   }
 
@@ -65,18 +77,45 @@ export class GameWorld {
     this.uiController.mount(this.canvas);
   }
 
-  /** Initialize and show the menu */
+  /** Initialize and show the menu (or tutorial on first launch) */
   init(): void {
     this.camera.position = new Vector3(0, 3, -8);
     this.camera.setTarget(new Vector3(0, 0, 0));
 
-    this.uiController.showMenu(this.scoreManager.getHighScore(), () => {
-      this.audioManager.init(); // Initialize audio on first user gesture
-      this.beginGame();
-    });
+    const tutorialSeen = localStorage.getItem(TUTORIAL_KEY);
+    if (!tutorialSeen) {
+      // First launch — show tutorial first, then menu
+      this.uiController.showTutorial(() => {
+        localStorage.setItem(TUTORIAL_KEY, "true");
+        this.showMainMenu();
+      });
+    } else {
+      this.showMainMenu();
+    }
   }
 
-  /** Begin actual gameplay after menu */
+  /** Show the main menu with optional daily challenge button */
+  private showMainMenu(): void {
+    const highScore = this.scoreManager.getHighScore();
+    const dailyBest = this.dailyChallenge.getDailyBest();
+
+    this.uiController.showMenu(highScore, dailyBest, () => {
+      this.audioManager.init();
+      this.gameMode = "normal";
+      this.beginGame();
+    });
+
+    // Add Daily Challenge button to the menu
+    setTimeout(() => {
+      this.uiController.addDailyChallengeButton(() => {
+        this.audioManager.init();
+        this.gameMode = "daily";
+        this.beginGame();
+      });
+    }, 50);
+  }
+
+  /** Begin actual gameplay */
   beginGame(): void {
     if (this.isPlaying) return;
     this.isPlaying = true;
@@ -97,8 +136,14 @@ export class GameWorld {
     this.ballY = 0;
     this.ball = new PlayerBall(this.engine, this.scene, this.ballY);
 
-    // Gates spawn above the ball and scroll down
-    this.gateManager = new GateManager(this.scene, this.ballY + 12);
+    // Gates: use seeded RNG for daily mode, normal Math.random for regular
+    const startSpawnY = this.ballY + 12;
+    if (this.gameMode === "daily") {
+      const rng = this.dailyChallenge.getRNG();
+      this.gateManager = new GateManager(this.scene, startSpawnY, rng);
+    } else {
+      this.gateManager = new GateManager(this.scene, startSpawnY);
+    }
 
     // Particles
     this.particleManager = new ParticleManager(this.scene);
@@ -111,10 +156,33 @@ export class GameWorld {
     this.uiController.clearHUD();
     this.uiController.showGameOverlay();
 
+    // Show mode indicator if daily
+    if (this.gameMode === "daily") {
+      this.showDailyModeIndicator();
+    }
+
     // Stop demo mode
     if ((window as any).__stopDemo) {
       (window as any).__stopDemo();
     }
+  }
+
+  /** Show a small indicator during gameplay that we're in daily mode */
+  private showDailyModeIndicator(): void {
+    const hud = (this.uiController as any).container as HTMLElement;
+    if (!hud) return;
+
+    const indicator = document.createElement("div");
+    indicator.id = "daily-mode-indicator";
+    indicator.textContent = "DAILY CHALLENGE";
+    indicator.style.cssText = `
+      position: absolute; top: 24px; left: 24px;
+      font-size: 12px; font-weight: 700; color: #FF9F1C;
+      letter-spacing: 2px; padding: 6px 12px;
+      background: rgba(255,159,28,0.12); border-radius: 8px;
+      border: 1px solid rgba(255,159,28,0.3);
+    `;
+    hud.appendChild(indicator);
   }
 
   /** Update game loop (called every frame) */
@@ -125,7 +193,7 @@ export class GameWorld {
     const score = this.scoreManager.getScore();
     this.fallSpeed = 3 + score * 0.25;
 
-    // STEP 1: Record gate Y positions BEFORE scrolling (for crossing detection)
+    // STEP 1: Record gate Y positions BEFORE scrolling
     if (this.gateManager) {
       const gates = this.gateManager.getGates();
       for (const gate of gates) {
@@ -133,19 +201,17 @@ export class GameWorld {
       }
     }
 
-    // STEP 1.5: Check for warning cues — gates approaching within warning distance
+    // STEP 1.5: Check for warning cues
     if (this.gateManager) {
       const gates = this.gateManager.getGates();
       for (const gate of gates) {
         const gateY = gate.baseY;
-        // Warning when gate is between warningDistance and warningDistance + fallSpeed * delta
-        // (i.e., gate will cross ballY within ~1 second)
         const approachThreshold = this.warningDistance;
         if (gateY > 0 && gateY <= approachThreshold && !this.warnedGates.has(gate)) {
           this.warnedGates.add(gate);
           this.uiController.showWarningFlash();
           this.audioManager.playWarning();
-          break; // Only warn once per frame
+          break;
         }
       }
     }
@@ -160,7 +226,7 @@ export class GameWorld {
       this.ball.mesh.position.y = this.ballY;
     }
 
-    // STEP 3: Check collisions — detect gates that crossed ballY this frame
+    // STEP 3: Check collisions
     if (this.ball && this.gateManager) {
       const gates = this.gateManager.getGates();
       for (const gate of gates) {
@@ -184,10 +250,8 @@ export class GameWorld {
             multiplier
           );
 
-          // Sound: pass ping + combo rise if combo is building
           this.audioManager.playPass(multiplier);
           if (combo >= 3) {
-            // Delayed combo rise sound for build-up feel
             setTimeout(() => {
               if (this.isPlaying) this.audioManager.playComboRise(combo);
             }, 80);
@@ -205,7 +269,18 @@ export class GameWorld {
             this.ball.getCurrentColorIndex() as 0 | 1 | 2 | 3 | 4 | 5
           );
           this.scoreManager.saveHighScore();
+
+          // Daily challenge: update daily best
+          const finalScore = this.scoreManager.getScore();
+          let isDailyBest = false;
+          if (this.gameMode === "daily") {
+            isDailyBest = this.dailyChallenge.updateDailyBest(finalScore);
+          }
+
           this.audioManager.playCrash();
+          // Trigger screen shake for intense crash impact
+          this.screenShake.trigger(0.4, 0.45);
+
           this.uiController.showGameOver(
             this.scoreManager.getScore(),
             this.scoreManager.getCombo(),
@@ -213,6 +288,16 @@ export class GameWorld {
             this.scoreManager.getScore() >= this.scoreManager.getHighScore(),
             () => this.restart()
           );
+
+          // Show daily best info if in daily mode
+          if (this.gameMode === "daily") {
+            this.uiController.updateGameOverForDaily(
+              finalScore,
+              this.scoreManager.getCombo(),
+              this.dailyChallenge.getDailyBest(),
+              isDailyBest
+            );
+          }
           break;
         }
       }
@@ -222,9 +307,12 @@ export class GameWorld {
     if (this.particleManager) {
       this.particleManager.update(delta);
     }
+
+    // Update screen shake (works even after game over for the crash effect)
+    this.screenShake.update(delta);
   }
 
-  /** Cycle ball color (called on tap/click/spacebar) */
+  /** Cycle ball color */
   private cycleColor(): void {
     if (this.isPlaying && this.ball && !this.isGameOver) {
       this.ball.cycleColor();
@@ -253,9 +341,7 @@ export class GameWorld {
       (window as any).__startDemo();
     }
 
-    this.uiController.showMenu(this.scoreManager.getHighScore(), () => {
-      this.beginGame();
-    });
+    this.showMainMenu();
   }
 
   /** Stop the game world */
