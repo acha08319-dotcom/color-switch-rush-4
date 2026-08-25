@@ -3,6 +3,8 @@
 // Tracks daily best score separately from all-time high score.
 
 import { SeededRandom } from "./SeededRandom";
+import { YtGameAdapter, type PlayablesSaveData } from "./YtGameAdapter";
+import { readLocal, writeLocal } from "./StorageAdapter";
 
 const DAILY_BEST_KEY = "colorSwitchRush_dailyBest";
 const DAILY_DATE_KEY = "colorSwitchRush_dailyDate";
@@ -22,14 +24,34 @@ export class DailyChallenge {
   }
 
   private loadDailyBest(): number {
-    const savedDate = localStorage.getItem(DAILY_DATE_KEY);
+    const savedDate = readLocal(DAILY_DATE_KEY);
     if (savedDate !== this.dateStamp) {
-      localStorage.setItem(DAILY_DATE_KEY, this.dateStamp);
-      localStorage.setItem(DAILY_BEST_KEY, "0");
+      writeLocal(DAILY_DATE_KEY, this.dateStamp);
+      writeLocal(DAILY_BEST_KEY, "0");
       return 0;
     }
-    const saved = localStorage.getItem(DAILY_BEST_KEY);
+    const saved = readLocal(DAILY_BEST_KEY);
     return saved ? parseInt(saved, 10) || 0 : 0;
+  }
+
+  async loadFromPlayables(): Promise<void> {
+    const raw = await YtGameAdapter.loadSaveData();
+    if (!raw) return;
+
+    try {
+      const saved = JSON.parse(raw) as Partial<PlayablesSaveData>;
+      if (saved.dailyDate === this.dateStamp && typeof saved.dailyBest === "number" && Number.isFinite(saved.dailyBest)) {
+        this.dailyBest = Math.max(this.dailyBest, Math.floor(saved.dailyBest));
+      } else if (saved.dailyDate && saved.dailyDate !== this.dateStamp) {
+        this.dailyBest = 0;
+      }
+
+      writeLocal(DAILY_DATE_KEY, this.dateStamp);
+      writeLocal(DAILY_BEST_KEY, this.dailyBest.toString());
+    } catch (error) {
+      console.warn("Saved daily challenge data could not be parsed", error);
+      YtGameAdapter.logWarning();
+    }
   }
 
   getRNG(): SeededRandom {
@@ -43,7 +65,8 @@ export class DailyChallenge {
   updateDailyBest(score: number): boolean {
     if (score > this.dailyBest) {
       this.dailyBest = score;
-      localStorage.setItem(DAILY_BEST_KEY, score.toString());
+      writeLocal(DAILY_BEST_KEY, score.toString());
+      void YtGameAdapter.mergeSaveData({ dailyBest: score, dailyDate: this.dateStamp });
       return true;
     }
     return false;

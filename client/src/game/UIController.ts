@@ -3,6 +3,7 @@
 // Game over screen with final score, multiplier, and replay button
 
 import { COLORS } from "./types";
+import { YtGameAdapter } from "./YtGameAdapter";
 
 const COLORS_HEX = COLORS.map((c) => c.hex);
 
@@ -29,6 +30,23 @@ export class UIController {
 
   dispose(): void {
     this.unmount();
+  }
+
+  showLoading(): void {
+    const hud = this.container;
+    if (!hud) return;
+    hud.innerHTML = "";
+
+    const loading = document.createElement("div");
+    loading.id = "hud-loading";
+    loading.textContent = "LOADING";
+    loading.style.cssText = `
+      position: absolute; inset: 0; display: flex;
+      align-items: center; justify-content: center;
+      color: rgba(255,255,255,0.72); font-size: 16px; font-weight: 700;
+      letter-spacing: 4px; background: #050514;
+    `;
+    hud.appendChild(loading);
   }
 
   /** Show the HUD overlay during gameplay (score, multiplier, combo) */
@@ -289,7 +307,14 @@ export class UIController {
   }
 
   /** Show game over screen */
-  showGameOver(score: number, combo: number, highScore: number, isHighScore: boolean, onRestart: () => void): void {
+  showGameOver(
+    score: number,
+    combo: number,
+    highScore: number,
+    isHighScore: boolean,
+    onRestart: () => void,
+    onRewardedContinue?: () => Promise<boolean>,
+  ): void {
     const hud = this.container;
     if (!hud) return;
     hud.innerHTML = "";
@@ -365,6 +390,36 @@ export class UIController {
       display: flex; gap: 12px; margin-top: 16px;
       align-items: center;
     `;
+
+    // Rewarded continuation is only surfaced inside the YouTube Playables host.
+    if (onRewardedContinue && YtGameAdapter.isInPlayables()) {
+      const rewardBtn = document.createElement("button");
+      rewardBtn.id = "hud-reward-btn";
+      rewardBtn.textContent = "WATCH AD TO CONTINUE";
+      rewardBtn.style.cssText = `
+        padding: 12px 20px; font-size: 12px; font-weight: 800;
+        color: #111; background: #FFD60A; border: none; border-radius: 10px;
+        cursor: pointer; box-shadow: 0 4px 18px rgba(255,214,10,0.3);
+        transition: transform 0.15s ease, opacity 0.15s ease;
+        pointer-events: auto; letter-spacing: 0.8px;
+      `;
+      rewardBtn.addEventListener("pointerdown", () => {
+        rewardBtn.style.transform = "scale(0.95)";
+      });
+      rewardBtn.addEventListener("click", async () => {
+        rewardBtn.style.transform = "scale(1)";
+        rewardBtn.disabled = true;
+        rewardBtn.style.opacity = "0.65";
+        rewardBtn.textContent = "LOADING AD...";
+        const earned = await onRewardedContinue();
+        if (!earned && rewardBtn.isConnected) {
+          rewardBtn.disabled = false;
+          rewardBtn.style.opacity = "1";
+          rewardBtn.textContent = "WATCH AD TO CONTINUE";
+        }
+      });
+      overlay.appendChild(rewardBtn);
+    }
 
     // Share Score button
     const shareBtn = document.createElement("button");

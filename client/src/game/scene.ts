@@ -18,6 +18,7 @@ import { GameWorld } from "./GameWorld";
 
 export interface GameHandle {
   scene: Scene;
+  world: GameWorld;
   dispose(): void;
 }
 
@@ -120,8 +121,11 @@ export async function createGameScene(
   // Create GameWorld
   const gameWorld = new GameWorld(engine, scene, camera, canvas);
 
-  // Mount HUD
+  // Mount HUD and keep the Playables host on a loading state until cloud save
+  // hydration completes. The menu is shown only after the game is interactable.
   gameWorld.mount();
+  gameWorld.showLoading();
+  await gameWorld.preparePersistence();
 
   // Register update loop
   scene.onBeforeRenderObservable.add(() => {
@@ -147,6 +151,7 @@ export async function createGameScene(
 
   return {
     scene,
+    world: gameWorld,
     dispose: () => {
       stopDemo();
       gameWorld.stop();

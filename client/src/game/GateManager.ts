@@ -150,6 +150,24 @@ export class GateManager {
     return this.gates;
   }
 
+  prepareContinuation(gateCount: number, ballY: number): void {
+    // Remove the crashed gate and any gates already behind the player.
+    for (let i = this.gates.length - 1; i >= 0; i--) {
+      if (this.gates[i].baseY <= ballY + 0.5) this.removeGate(i);
+    }
+
+    // Keep the continuation predictable: ensure at least the requested number
+    // of gates are ahead before normal spawning resumes.
+    const futureGates = this.gates.filter((gate) => gate.baseY > ballY + 0.5);
+    if (futureGates.length === 0) {
+      this.nextSpawnY = Math.max(this.nextSpawnY, ballY + 12);
+    }
+
+    while (this.gates.filter((gate) => gate.baseY > ballY + 0.5).length < gateCount) {
+      this.spawnGate();
+    }
+  }
+
   setRotationSpeed(increment: number): void {
     this.baseRotationSpeed += increment;
     for (const gate of this.gates) {

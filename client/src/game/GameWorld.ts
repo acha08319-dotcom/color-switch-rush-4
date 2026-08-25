@@ -21,6 +21,8 @@ import { AudioManager } from "./AudioManager";
 import { ScreenShake } from "./ScreenShake";
 import { DailyChallenge } from "./DailyChallenge";
 import { SeededRandom } from "./SeededRandom";
+import { YtGameAdapter } from "./YtGameAdapter";
+import { readLocal, writeLocal } from "./StorageAdapter";
 
 const TUTORIAL_KEY = "colorSwitchRush_tutorialSeen";
 
@@ -48,6 +50,7 @@ export class GameWorld {
 
   // Mode: "normal" or "daily"
   private gameMode: "normal" | "daily" = "normal";
+  private isPaused = false;
 
   // Warning cue tracking
   private warnedGates = new WeakSet();
@@ -77,16 +80,47 @@ export class GameWorld {
     this.uiController.mount(this.canvas);
   }
 
+  showLoading(): void {
+    this.uiController.showLoading();
+  }
+
+  async preparePersistence(): Promise<void> {
+    await Promise.all([
+      this.scoreManager.loadFromPlayables(),
+      this.dailyChallenge.loadFromPlayables(),
+    ]);
+  }
+
+  setAudioEnabled(enabled: boolean): void {
+    this.audioManager.setMuted(!enabled);
+  }
+
+  pause(): void {
+    if (this.isPaused) return;
+    this.isPaused = true;
+    if (this.inputManager) this.inputManager.detach();
+    void this.dailyChallenge.loadFromPlayables();
+    this.scoreManager.saveHighScore();
+  }
+
+  resume(): void {
+    if (!this.isPaused) return;
+    this.isPaused = false;
+    if (this.isPlaying && !this.isGameOver) {
+      this.inputManager.attach(this.engine, this.canvas);
+    }
+  }
+
   /** Initialize and show the menu (or tutorial on first launch) */
   init(): void {
     this.camera.position = new Vector3(0, 3, -8);
     this.camera.setTarget(new Vector3(0, 0, 0));
 
-    const tutorialSeen = localStorage.getItem(TUTORIAL_KEY);
+    const tutorialSeen = readLocal(TUTORIAL_KEY);
     if (!tutorialSeen) {
       // First launch — show tutorial first, then menu
       this.uiController.showTutorial(() => {
-        localStorage.setItem(TUTORIAL_KEY, "true");
+        writeLocal(TUTORIAL_KEY, "true");
         this.showMainMenu();
       });
     } else {
@@ -187,7 +221,9 @@ export class GameWorld {
 
   /** Update game loop (called every frame) */
   update(delta: number): void {
-    if (!this.isPlaying) return;
+    // Keep the impact animation running for its full duration after a crash.
+    this.screenShake.update(delta);
+    if (!this.isPlaying || this.isPaused) return;
 
     // Scroll speed starts slow and increases with each gate passed
     const score = this.scoreManager.getScore();
@@ -286,7 +322,8 @@ export class GameWorld {
             this.scoreManager.getCombo(),
             this.scoreManager.getHighScore(),
             this.scoreManager.getScore() >= this.scoreManager.getHighScore(),
-            () => this.restart()
+            () => { void this.restartWithInterstitial(); },
+            () => this.continueAfterReward()
           );
 
           // Show daily best info if in daily mode
@@ -308,8 +345,6 @@ export class GameWorld {
       this.particleManager.update(delta);
     }
 
-    // Update screen shake (works even after game over for the crash effect)
-    this.screenShake.update(delta);
   }
 
   /** Cycle ball color */
@@ -320,10 +355,33 @@ export class GameWorld {
     }
   }
 
+  private async restartWithInterstitial(): Promise<void> {
+    await YtGameAdapter.requestInterstitialAd();
+    this.restart();
+  }
+
+  private async continueAfterReward(): Promise<boolean> {
+    const earned = await YtGameAdapter.requestRewardedAd("color-switch-rush-extra-gates");
+    if (!earned || !this.gateManager || !this.ball) return false;
+
+    this.isGameOver = false;
+    this.isPlaying = true;
+    this.isPaused = false;
+    this.collisionDetector.reset();
+    this.warnedGates = new WeakSet();
+    this.gateManager.prepareContinuation(3, this.ballY);
+    this.inputManager.attach(this.engine, this.canvas);
+    this.uiController.clearHUD();
+    this.uiController.showGameOverlay();
+    if (this.gameMode === "daily") this.showDailyModeIndicator();
+    return true;
+  }
+
   /** Restart after game over */
   private restart(): void {
     this.isPlaying = false;
     this.isGameOver = false;
+    this.isPaused = false;
 
     if (this.inputManager) this.inputManager.detach();
     if (this.ball) { this.ball.dispose(); this.ball = null; }
@@ -347,6 +405,7 @@ export class GameWorld {
   /** Stop the game world */
   stop(): void {
     this.isPlaying = false;
+    this.isPaused = false;
     if (this.inputManager) this.inputManager.detach();
     this.uiController.dispose();
     this.audioManager.dispose();

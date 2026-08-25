@@ -14,6 +14,7 @@
 import { useEffect, useRef } from "react";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { createGameScene, type GameHandle } from "@/game/scene";
+import { YtGameAdapter } from "@/game/YtGameAdapter";
 
 export default function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -33,16 +34,49 @@ export default function GameCanvas() {
     // createGameScene wires up the whole game (GameWorld, Player, gates,
     // input, scoring). It returns a handle for cleanup.
     let handle: GameHandle | null = null;
+    let disposed = false;
+    let firstFrameReported = false;
+    let removeAudioListener: () => void = () => {};
+    let removePauseListener: () => void = () => {};
+    let removeResumeListener: () => void = () => {};
+
     createGameScene(engine, canvas).then((h) => {
+      if (disposed) {
+        h.dispose();
+        return;
+      }
+
       handle = h;
-      engine.runRenderLoop(() => h.scene.render());
+      h.world.setAudioEnabled(YtGameAdapter.isAudioEnabled());
+      removeAudioListener = YtGameAdapter.onAudioEnabledChange((enabled) => {
+        h.world.setAudioEnabled(enabled);
+      });
+      removePauseListener = YtGameAdapter.onPause(() => h.world.pause());
+      removeResumeListener = YtGameAdapter.onResume(() => h.world.resume());
+
+      engine.runRenderLoop(() => {
+        h.scene.render();
+        if (!firstFrameReported) {
+          firstFrameReported = true;
+          YtGameAdapter.notifyFirstFrameReady();
+          YtGameAdapter.notifyGameReady();
+        }
+      });
+    }).catch((error) => {
+      console.error("Failed to initialize Color Switch Rush", error);
+      YtGameAdapter.logError();
     });
 
     const onResize = () => engine.resize();
     window.addEventListener("resize", onResize);
 
     return () => {
+      disposed = true;
       window.removeEventListener("resize", onResize);
+      removeAudioListener();
+      removePauseListener();
+      removeResumeListener();
+      engine.stopRenderLoop();
       handle?.dispose();
       engine.dispose();
       startedRef.current = false;

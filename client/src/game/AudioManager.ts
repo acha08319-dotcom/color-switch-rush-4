@@ -5,6 +5,7 @@
 
 export class AudioManager {
   private ctx: AudioContext | null = null;
+  private muted = false;
 
   /** Lazily initialize the AudioContext (must be triggered by user gesture) */
   private ensureContext(): AudioContext {
@@ -19,11 +20,21 @@ export class AudioManager {
 
   /** Initialize audio on first user interaction */
   init(): void {
+    if (this.muted) return;
     this.ensureContext();
+  }
+
+  setMuted(muted: boolean): void {
+    this.muted = muted;
+  }
+
+  isMuted(): boolean {
+    return this.muted;
   }
 
   /** Play a satisfying ascending ping for a successful pass */
   playPass(multiplier: number = 1): void {
+    if (this.muted) return;
     const ctx = this.ensureContext();
     const now = ctx.currentTime;
 
@@ -59,6 +70,7 @@ export class AudioManager {
 
   /** Play a low thud/crash sound */
   playCrash(): void {
+    if (this.muted) return;
     const ctx = this.ensureContext();
     const now = ctx.currentTime;
 
@@ -95,6 +107,7 @@ export class AudioManager {
 
   /** Play a soft click for color cycling */
   playColorCycle(): void {
+    if (this.muted) return;
     const ctx = this.ensureContext();
     const now = ctx.currentTime;
 
@@ -113,6 +126,7 @@ export class AudioManager {
 
   /** Play a rising pitch tone when combo increases */
   playComboRise(comboLevel: number): void {
+    if (this.muted) return;
     const ctx = this.ensureContext();
     const now = ctx.currentTime;
 
@@ -166,6 +180,7 @@ export class AudioManager {
 
   /** Play an urgent warning beep before a gate arrives */
   playWarning(): void {
+    if (this.muted) return;
     const ctx = this.ensureContext();
     const now = ctx.currentTime;
 
