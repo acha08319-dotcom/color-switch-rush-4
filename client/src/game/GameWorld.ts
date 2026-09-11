@@ -19,6 +19,7 @@ import { UIController } from "./UIController";
 import { InputManager } from "./InputManager";
 import { AudioManager } from "./AudioManager";
 import { ScreenShake } from "./ScreenShake";
+import { HapticsManager } from "./HapticsManager";
 import { DailyChallenge } from "./DailyChallenge";
 import { SeededRandom } from "./SeededRandom";
 import { YtGameAdapter } from "./YtGameAdapter";
@@ -38,6 +39,7 @@ export class GameWorld {
   private inputManager: InputManager;
   private audioManager: AudioManager;
   private screenShake: ScreenShake;
+  private hapticsManager: HapticsManager;
   private dailyChallenge: DailyChallenge;
   private engine: Engine;
   private canvas: HTMLCanvasElement;
@@ -51,6 +53,8 @@ export class GameWorld {
   // Mode: "normal" or "daily"
   private gameMode: "normal" | "daily" = "normal";
   private isPaused = false;
+  private rushCharge = 0;
+  private readonly rushThreshold = 8;
 
   // Warning cue tracking
   private warnedGates = new WeakSet();
@@ -72,8 +76,14 @@ export class GameWorld {
     this.uiController = new UIController();
     this.audioManager = new AudioManager();
     this.screenShake = new ScreenShake(camera);
+    this.hapticsManager = new HapticsManager();
     this.dailyChallenge = new DailyChallenge();
-    this.inputManager = null as any;
+    this.inputManager = new InputManager(() => this.cycleColor(), () => {
+      if (this.isPlaying && !this.isGameOver) {
+        if (this.isPaused) this.resume();
+        else this.pause();
+      }
+    });
   }
 
   mount(): void {
@@ -99,6 +109,7 @@ export class GameWorld {
     if (this.isPaused) return;
     this.isPaused = true;
     if (this.inputManager) this.inputManager.detach();
+    this.uiController.showPauseOverlay(() => this.resume(), YtGameAdapter.isInPlayables());
     void this.dailyChallenge.loadFromPlayables();
     this.scoreManager.saveHighScore();
   }
@@ -108,6 +119,7 @@ export class GameWorld {
     this.isPaused = false;
     if (this.isPlaying && !this.isGameOver) {
       this.inputManager.attach(this.engine, this.canvas);
+      this.uiController.hidePauseOverlay();
     }
   }
 
@@ -133,11 +145,17 @@ export class GameWorld {
     const highScore = this.scoreManager.getHighScore();
     const dailyBest = this.dailyChallenge.getDailyBest();
 
-    this.uiController.showMenu(highScore, dailyBest, () => {
-      this.audioManager.init();
-      this.gameMode = "normal";
-      this.beginGame();
-    });
+    this.uiController.showMenu(
+      highScore,
+      dailyBest,
+      () => {
+        this.audioManager.init();
+        this.gameMode = "normal";
+        this.beginGame();
+      },
+      this.hapticsManager.isEnabled(),
+      () => this.hapticsManager.toggle(),
+    );
 
     // Add Daily Challenge button to the menu
     setTimeout(() => {
@@ -163,8 +181,9 @@ export class GameWorld {
     this.collisionDetector.reset();
     this.warnedGates = new WeakSet();
 
-    // Reset score
+    // Reset score and RUSH momentum
     this.scoreManager.reset();
+    this.rushCharge = 0;
 
     // Ball at fixed center position (Y=0)
     this.ballY = 0;
@@ -194,6 +213,9 @@ export class GameWorld {
     if (this.gameMode === "daily") {
       this.showDailyModeIndicator();
     }
+
+    this.uiController.updateRushProgress(0, this.rushThreshold);
+    this.uiController.updateUpcoming([]);
 
     // Stop demo mode
     if ((window as any).__stopDemo) {
@@ -255,6 +277,7 @@ export class GameWorld {
     // STEP 2: Scroll gates downward
     if (this.gateManager) {
       this.gateManager.update(delta, this.fallSpeed);
+      this.uiController.updateUpcoming(this.gateManager.getUpcomingColorIndices(this.ballY));
     }
 
     // Ball stays fixed at Y=0
@@ -274,6 +297,8 @@ export class GameWorld {
 
         if (result === "pass") {
           this.scoreManager.pass();
+          this.rushCharge = Math.min(this.rushThreshold, this.rushCharge + 1);
+          this.uiController.updateRushProgress(this.rushCharge, this.rushThreshold);
           const multiplier = this.scoreManager.getMultiplier();
           const combo = this.scoreManager.getCombo();
 
@@ -287,6 +312,11 @@ export class GameWorld {
           );
 
           this.audioManager.playPass(multiplier);
+          this.hapticsManager.pulse("pass");
+          if (this.rushCharge >= this.rushThreshold) {
+            this.uiController.showRushBurst();
+            this.hapticsManager.pulse("rush");
+          }
           if (combo >= 3) {
             setTimeout(() => {
               if (this.isPlaying) this.audioManager.playComboRise(combo);
@@ -314,6 +344,7 @@ export class GameWorld {
           }
 
           this.audioManager.playCrash();
+          this.hapticsManager.pulse("crash");
           // Trigger screen shake for intense crash impact
           this.screenShake.trigger(0.4, 0.45);
 
@@ -322,8 +353,8 @@ export class GameWorld {
             this.scoreManager.getCombo(),
             this.scoreManager.getHighScore(),
             this.scoreManager.getScore() >= this.scoreManager.getHighScore(),
-            () => { void this.restartWithInterstitial(); },
-            () => this.continueAfterReward()
+            () => this.restart(),
+            !YtGameAdapter.isInPlayables()
           );
 
           // Show daily best info if in daily mode
@@ -352,29 +383,8 @@ export class GameWorld {
     if (this.isPlaying && this.ball && !this.isGameOver) {
       this.ball.cycleColor();
       this.audioManager.playColorCycle();
+      this.hapticsManager.pulse("cycle");
     }
-  }
-
-  private async restartWithInterstitial(): Promise<void> {
-    await YtGameAdapter.requestInterstitialAd();
-    this.restart();
-  }
-
-  private async continueAfterReward(): Promise<boolean> {
-    const earned = await YtGameAdapter.requestRewardedAd("color-switch-rush-extra-gates");
-    if (!earned || !this.gateManager || !this.ball) return false;
-
-    this.isGameOver = false;
-    this.isPlaying = true;
-    this.isPaused = false;
-    this.collisionDetector.reset();
-    this.warnedGates = new WeakSet();
-    this.gateManager.prepareContinuation(3, this.ballY);
-    this.inputManager.attach(this.engine, this.canvas);
-    this.uiController.clearHUD();
-    this.uiController.showGameOverlay();
-    if (this.gameMode === "daily") this.showDailyModeIndicator();
-    return true;
   }
 
   /** Restart after game over */

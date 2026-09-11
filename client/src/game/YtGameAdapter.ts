@@ -174,27 +174,6 @@ export const YtGameAdapter = {
     }
   },
 
-  async requestInterstitialAd(): Promise<void> {
-    if (!YtGameAdapter.isInPlayables()) return;
-    try {
-      await ytgame.ads.requestInterstitialAd();
-    } catch (error) {
-      console.warn("YouTube Playables interstitial ad request failed", error);
-      YtGameAdapter.logWarning();
-    }
-  },
-
-  async requestRewardedAd(rewardId: string): Promise<boolean> {
-    if (!YtGameAdapter.isInPlayables()) return false;
-    try {
-      return await ytgame.ads.requestRewardedAd(rewardId);
-    } catch (error) {
-      console.warn("YouTube Playables rewarded ad request failed", error);
-      YtGameAdapter.logWarning();
-      return false;
-    }
-  },
-
   logError(): void {
     if (!hasSdk()) return;
     try {

@@ -3,7 +3,6 @@
 // Game over screen with final score, multiplier, and replay button
 
 import { COLORS } from "./types";
-import { YtGameAdapter } from "./YtGameAdapter";
 
 const COLORS_HEX = COLORS.map((c) => c.hex);
 
@@ -17,8 +16,12 @@ export class UIController {
     this.container.id = "game-hud";
     this.container.style.cssText = `
       position: fixed; inset: 0; pointer-events: none; z-index: 100;
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      user-select: none; overflow: hidden;
+      font-family: 'Arial Narrow', 'Segoe UI', system-ui, sans-serif;
+      user-select: none; overflow: hidden; isolation: isolate;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
     `;
     document.body.appendChild(this.container);
   }
@@ -59,8 +62,8 @@ export class UIController {
     const scoreEl = document.createElement("div");
     scoreEl.id = "hud-score";
     scoreEl.style.cssText = `
-      position: absolute; top: 24px; right: 28px;
-      font-size: 52px; font-weight: 800; color: #fff;
+      position: absolute; top: calc(var(--safe-top) + 18px); right: calc(var(--safe-right) + 22px);
+      font-size: clamp(36px, 8vw, 52px); font-weight: 900; color: #fff;
       text-shadow: 0 0 20px rgba(255,255,255,0.3), 0 2px 4px rgba(0,0,0,0.5);
     `;
     scoreEl.textContent = "0";
@@ -70,9 +73,9 @@ export class UIController {
     const multEl = document.createElement("div");
     multEl.id = "hud-multiplier";
     multEl.style.cssText = `
-      position: absolute; top: 20px; left: 50%;
+      position: absolute; top: calc(var(--safe-top) + 16px); left: 50%;
       transform: translateX(-50%);
-      font-size: 30px; font-weight: 800;
+      font-size: clamp(24px, 5vw, 30px); font-weight: 900;
       color: #FFD60A;
       text-shadow: 0 0 18px rgba(255,214,10,0.6), 0 2px 4px rgba(0,0,0,0.5);
       display: flex; align-items: center; gap: 6px;
@@ -85,14 +88,56 @@ export class UIController {
     const comboEl = document.createElement("div");
     comboEl.id = "hud-combo";
     comboEl.style.cssText = `
-      position: absolute; top: 56px; left: 50%;
+      position: absolute; top: calc(var(--safe-top) + 56px); left: 50%;
       transform: translateX(-50%);
-      font-size: 16px; font-weight: 600;
-      color: rgba(255,214,10,0.7);
-      letter-spacing: 1px;
+      font-size: 14px; font-weight: 700;
+      color: rgba(255,214,10,0.74);
+      letter-spacing: 2px;
     `;
     comboEl.textContent = "COMBO 0";
     hud.appendChild(comboEl);
+
+    const rushWrap = document.createElement("div");
+    rushWrap.id = "hud-rush-wrap";
+    rushWrap.style.cssText = `
+      position: absolute; top: calc(var(--safe-top) + 92px); left: 50%;
+      width: min(180px, 46vw); height: 5px; transform: translateX(-50%);
+      border: 1px solid rgba(22,217,255,0.38); background: rgba(4,16,40,0.72);
+      overflow: hidden; opacity: 0.82;
+    `;
+    const rushFill = document.createElement("div");
+    rushFill.id = "hud-rush-fill";
+    rushFill.style.cssText = `height: 100%; width: 0%; background: #16D9FF; box-shadow: 0 0 14px #16D9FF; transition: width 160ms cubic-bezier(0.23,1,0.32,1), background 160ms ease;`;
+    rushWrap.appendChild(rushFill);
+    hud.appendChild(rushWrap);
+
+    const rushLabel = document.createElement("div");
+    rushLabel.id = "hud-rush-label";
+    rushLabel.textContent = "RUSH CHARGE";
+    rushLabel.style.cssText = `
+      position: absolute; top: calc(var(--safe-top) + 101px); left: 50%;
+      transform: translateX(-50%); font-size: 9px; font-weight: 800;
+      letter-spacing: 2px; color: rgba(22,217,255,0.66);
+    `;
+    hud.appendChild(rushLabel);
+
+    const rail = document.createElement("div");
+    rail.id = "hud-upcoming-rail";
+    rail.style.cssText = `
+      position: absolute; left: calc(var(--safe-left) + 20px); bottom: calc(var(--safe-bottom) + 24px);
+      display: flex; flex-direction: column; gap: 7px; align-items: center;
+      padding: 10px 8px; background: rgba(4,10,30,0.56); border: 1px solid rgba(255,255,255,0.13);
+      backdrop-filter: blur(8px); pointer-events: none;
+    `;
+    const railLabel = document.createElement("div");
+    railLabel.textContent = "NEXT";
+    railLabel.style.cssText = "font-size: 9px; font-weight: 800; letter-spacing: 2px; color: rgba(255,255,255,0.48);";
+    rail.appendChild(railLabel);
+    const railDots = document.createElement("div");
+    railDots.id = "hud-upcoming-dots";
+    railDots.style.cssText = "display: flex; gap: 6px; align-items: center;";
+    rail.appendChild(railDots);
+    hud.appendChild(rail);
   }
 
   updateScore(score: number, multiplier: number): void {
@@ -111,14 +156,14 @@ export class UIController {
     const multEl = hud.querySelector("#hud-multiplier") as HTMLElement;
     if (multEl) {
       multEl.textContent = `${multiplier}x`;
-      if (multiplier >= 3) {
-        multEl.style.fontSize = "36px";
-        multEl.style.color = "#FFA500";
-        multEl.style.textShadow = "0 0 30px rgba(255,165,0,0.9), 0 2px 4px rgba(0,0,0,0.5)";
-      } else if (multiplier >= 5) {
+      if (multiplier >= 5) {
         multEl.style.fontSize = "40px";
         multEl.style.color = "#FF6B6B";
         multEl.style.textShadow = "0 0 40px rgba(255,107,107,0.9), 0 2px 4px rgba(0,0,0,0.5)";
+      } else if (multiplier >= 3) {
+        multEl.style.fontSize = "36px";
+        multEl.style.color = "#FFA500";
+        multEl.style.textShadow = "0 0 30px rgba(255,165,0,0.9), 0 2px 4px rgba(0,0,0,0.5)";
       } else {
         multEl.style.fontSize = "30px";
         multEl.style.color = "#FFD60A";
@@ -134,7 +179,13 @@ export class UIController {
   }
 
   /** Show the start menu (with optional daily best display) */
-  showMenu(highScore: number, dailyBest: number | undefined, onStart: () => void): void {
+  showMenu(
+    highScore: number,
+    dailyBest: number | undefined,
+    onStart: () => void,
+    hapticsEnabled = false,
+    onToggleHaptics: () => boolean = () => hapticsEnabled,
+  ): void {
     const hud = this.container;
     if (!hud) return;
     hud.innerHTML = "";
@@ -234,6 +285,22 @@ export class UIController {
     });
     overlay.appendChild(btn);
 
+    const hapticsBtn = document.createElement("button");
+    hapticsBtn.id = "hud-haptics-btn";
+    hapticsBtn.textContent = `VIBRATION ${hapticsEnabled ? "ON" : "OFF"}`;
+    hapticsBtn.style.cssText = `
+      margin-top: 18px; padding: 8px 14px; font-size: 10px; font-weight: 800;
+      letter-spacing: 1.5px; color: rgba(255,255,255,0.64); background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.16); cursor: pointer; pointer-events: auto;
+    `;
+    hapticsBtn.addEventListener("click", () => {
+      const next = onToggleHaptics();
+      hapticsBtn.textContent = `VIBRATION ${next ? "ON" : "OFF"}`;
+      hapticsBtn.style.color = next ? "#16D9FF" : "rgba(255,255,255,0.64)";
+      hapticsBtn.style.borderColor = next ? "rgba(22,217,255,0.58)" : "rgba(255,255,255,0.16)";
+    });
+    overlay.appendChild(hapticsBtn);
+
     // Instructions
     const instructions = document.createElement("div");
     instructions.textContent = "Tap / Click / Space to cycle color";
@@ -313,13 +380,14 @@ export class UIController {
     highScore: number,
     isHighScore: boolean,
     onRestart: () => void,
-    onRewardedContinue?: () => Promise<boolean>,
+    allowShare = true,
   ): void {
     const hud = this.container;
     if (!hud) return;
     hud.innerHTML = "";
 
     const overlay = document.createElement("div");
+    overlay.id = "hud-gameover-overlay";
     overlay.style.cssText = `
       position: absolute; inset: 0;
       display: flex; flex-direction: column;
@@ -386,42 +454,13 @@ export class UIController {
 
     // Buttons row
     const btnRow = document.createElement("div");
+    btnRow.id = "hud-gameover-buttons";
     btnRow.style.cssText = `
       display: flex; gap: 12px; margin-top: 16px;
       align-items: center;
     `;
 
-    // Rewarded continuation is only surfaced inside the YouTube Playables host.
-    if (onRewardedContinue && YtGameAdapter.isInPlayables()) {
-      const rewardBtn = document.createElement("button");
-      rewardBtn.id = "hud-reward-btn";
-      rewardBtn.textContent = "WATCH AD TO CONTINUE";
-      rewardBtn.style.cssText = `
-        padding: 12px 20px; font-size: 12px; font-weight: 800;
-        color: #111; background: #FFD60A; border: none; border-radius: 10px;
-        cursor: pointer; box-shadow: 0 4px 18px rgba(255,214,10,0.3);
-        transition: transform 0.15s ease, opacity 0.15s ease;
-        pointer-events: auto; letter-spacing: 0.8px;
-      `;
-      rewardBtn.addEventListener("pointerdown", () => {
-        rewardBtn.style.transform = "scale(0.95)";
-      });
-      rewardBtn.addEventListener("click", async () => {
-        rewardBtn.style.transform = "scale(1)";
-        rewardBtn.disabled = true;
-        rewardBtn.style.opacity = "0.65";
-        rewardBtn.textContent = "LOADING AD...";
-        const earned = await onRewardedContinue();
-        if (!earned && rewardBtn.isConnected) {
-          rewardBtn.disabled = false;
-          rewardBtn.style.opacity = "1";
-          rewardBtn.textContent = "WATCH AD TO CONTINUE";
-        }
-      });
-      overlay.appendChild(rewardBtn);
-    }
-
-    // Share Score button
+    // Local-preview convenience only. Playables mode must not show in-game sharing prompts.
     const shareBtn = document.createElement("button");
     shareBtn.id = "hud-share-btn";
     shareBtn.textContent = "SHARE SCORE";
@@ -474,7 +513,7 @@ export class UIController {
         showCopied();
       }
     });
-    btnRow.appendChild(shareBtn);
+    if (allowShare) btnRow.appendChild(shareBtn);
 
     // Play Again button
     const restartBtn = document.createElement("button");
@@ -692,13 +731,11 @@ export class UIController {
     const hud = this.container;
     if (!hud) return;
 
-    // Find the game-over overlay
-    const overlays = hud.querySelectorAll('[style*="display: flex"]');
-    const gameoverOverlay = overlays[overlays.length - 1] as HTMLElement;
+    // Use stable IDs so the daily badge stays separate from the action buttons.
+    const gameoverOverlay = hud.querySelector("#hud-gameover-overlay") as HTMLElement | null;
     if (!gameoverOverlay) return;
 
-    // Find the button row and insert before it
-    const btnRow = gameoverOverlay.querySelector('[style*="gap"]') as HTMLElement;
+    const btnRow = gameoverOverlay.querySelector("#hud-gameover-buttons") as HTMLElement | null;
     const dailyEl = document.createElement("div");
     dailyEl.style.cssText = `
       font-size: 16px; color: #FF9F1C; font-weight: 700;
@@ -713,6 +750,92 @@ export class UIController {
     } else {
       gameoverOverlay.appendChild(dailyEl);
     }
+  }
+
+  updateRushProgress(progress: number, threshold: number): void {
+    const hud = this.container;
+    if (!hud) return;
+    const fill = hud.querySelector("#hud-rush-fill") as HTMLElement | null;
+    const label = hud.querySelector("#hud-rush-label") as HTMLElement | null;
+    if (!fill || !label) return;
+    const ratio = threshold > 0 ? Math.max(0, Math.min(1, progress / threshold)) : 0;
+    fill.style.width = `${ratio * 100}%`;
+    const charged = ratio >= 1;
+    fill.style.background = charged ? "#FFD60A" : "#16D9FF";
+    fill.style.boxShadow = charged ? "0 0 16px #FFD60A" : "0 0 14px #16D9FF";
+    label.textContent = charged ? "RUSH READY" : "RUSH CHARGE";
+    label.style.color = charged ? "#FFD60A" : "rgba(22,217,255,0.66)";
+  }
+
+  updateUpcoming(colorIndices: number[]): void {
+    const hud = this.container;
+    if (!hud) return;
+    const dots = hud.querySelector("#hud-upcoming-dots") as HTMLElement | null;
+    if (!dots) return;
+    dots.innerHTML = "";
+    colorIndices.slice(0, 3).forEach((colorIndex, index) => {
+      const dot = document.createElement("span");
+      const color = COLORS_HEX[colorIndex] ?? "#ffffff";
+      dot.setAttribute("aria-label", `Upcoming gate ${index + 1}`);
+      dot.style.cssText = `
+        display: block; width: ${index === 0 ? 16 : 11}px; height: ${index === 0 ? 16 : 11}px;
+        border-radius: 50%; background: ${color}; opacity: ${index === 0 ? 1 : 0.58};
+        box-shadow: 0 0 ${index === 0 ? 13 : 8}px ${color};
+        border: ${index === 0 ? "2px solid rgba(255,255,255,0.85)" : "1px solid rgba(255,255,255,0.28)"};
+      `;
+      dots.appendChild(dot);
+    });
+  }
+
+  showRushBurst(): void {
+    const hud = this.container;
+    if (!hud || hud.querySelector("#rush-burst")) return;
+    const burst = document.createElement("div");
+    burst.id = "rush-burst";
+    burst.textContent = "RUSH";
+    burst.style.cssText = `
+      position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%) rotate(-5deg);
+      color: #FFD60A; font-size: clamp(48px, 15vw, 92px); font-weight: 1000; font-style: italic;
+      letter-spacing: -2px; text-shadow: 0 0 12px #16D9FF, 0 0 42px rgba(255,214,10,0.72);
+      animation: rushBurst 760ms cubic-bezier(0.23,1,0.32,1) forwards; pointer-events: none;
+    `;
+    const style = document.createElement("style");
+    style.textContent = `@keyframes rushBurst { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.72) rotate(-10deg); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.2) rotate(3deg); } }`;
+    burst.appendChild(style);
+    hud.appendChild(burst);
+    setTimeout(() => burst.remove(), 820);
+  }
+
+  showPauseOverlay(onResume: () => void = () => undefined, isPlayables = false): void {
+    const hud = this.container;
+    if (!hud || hud.querySelector("#pause-overlay")) return;
+    const pause = document.createElement("div");
+    pause.id = "pause-overlay";
+    pause.style.cssText = `
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; background: rgba(3,7,24,0.68);
+      backdrop-filter: blur(5px); pointer-events: none;
+    `;
+    const title = document.createElement("div");
+    title.textContent = "PAUSED";
+    title.style.cssText = "font-size: clamp(30px, 8vw, 52px); font-weight: 900; letter-spacing: 4px; color: #fff; text-shadow: 0 0 24px rgba(22,217,255,0.7);";
+    pause.appendChild(title);
+    const hint = document.createElement("div");
+    hint.textContent = isPlayables ? "RESUME FROM YOUTUBE CONTROLS" : "PRESS ESC TO RESUME";
+    hint.style.cssText = "margin-top: 12px; font-size: 11px; letter-spacing: 2px; color: rgba(255,255,255,0.56);";
+    pause.appendChild(hint);
+    if (!isPlayables) {
+      const resume = document.createElement("button");
+      resume.textContent = "RESUME";
+      resume.style.cssText = "margin-top: 22px; padding: 11px 24px; color: #041020; background: #16D9FF; border: 0; font: 800 12px Arial, sans-serif; letter-spacing: 1.5px; cursor: pointer; pointer-events: auto; box-shadow: 0 0 22px rgba(22,217,255,0.45);";
+      resume.addEventListener("click", onResume);
+      pause.appendChild(resume);
+    }
+    hud.appendChild(pause);
+  }
+
+  hidePauseOverlay(): void {
+    this.container?.querySelector("#pause-overlay")?.remove();
   }
 
   clearHUD(): void {

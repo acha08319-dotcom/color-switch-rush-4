@@ -150,6 +150,20 @@ export class GateManager {
     return this.gates;
   }
 
+  /** Return the front-segment colors for the next gates, closest first. */
+  getUpcomingColorIndices(ballY: number, count = 3): ColorIndex[] {
+    return this.gates
+      .filter((gate) => gate.baseY > ballY + 0.2)
+      .sort((a, b) => a.baseY - b.baseY)
+      .slice(0, count)
+      .map((gate) => {
+        const rotationDeg = ((gate.mesh.rotation.y * 180) / Math.PI) % 360;
+        const normalizedRot = ((rotationDeg % 360) + 360) % 360;
+        const frontSegment = ((2 - Math.round(normalizedRot / 60)) % 6 + 6) % 6;
+        return gate.segmentColors[frontSegment];
+      });
+  }
+
   prepareContinuation(gateCount: number, ballY: number): void {
     // Remove the crashed gate and any gates already behind the player.
     for (let i = this.gates.length - 1; i >= 0; i--) {

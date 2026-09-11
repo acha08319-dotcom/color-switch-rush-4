@@ -41,11 +41,6 @@ declare namespace ytgame {
     function sendScore(score: Score): Promise<void>;
   }
 
-  namespace ads {
-    function requestInterstitialAd(): Promise<void>;
-    function requestRewardedAd(rewardId: string): Promise<boolean>;
-  }
-
   namespace health {
     function logError(): void;
     function logWarning(): void;

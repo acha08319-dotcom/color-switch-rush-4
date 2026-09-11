@@ -36,6 +36,13 @@ export default function GameCanvas() {
     let handle: GameHandle | null = null;
     let disposed = false;
     let firstFrameReported = false;
+    const bootShell = document.getElementById("yt-boot-shell");
+    const removeBootShell = () => bootShell?.remove();
+    const showBootError = () => {
+      const status = bootShell?.querySelector(".yt-boot-status");
+      if (status) status.textContent = "LOAD ERROR — RESTART";
+      bootShell?.setAttribute("data-error", "true");
+    };
     let removeAudioListener: () => void = () => {};
     let removePauseListener: () => void = () => {};
     let removeResumeListener: () => void = () => {};
@@ -58,21 +65,35 @@ export default function GameCanvas() {
         h.scene.render();
         if (!firstFrameReported) {
           firstFrameReported = true;
+          removeBootShell();
           YtGameAdapter.notifyFirstFrameReady();
           YtGameAdapter.notifyGameReady();
         }
       });
     }).catch((error) => {
       console.error("Failed to initialize Color Switch Rush", error);
+      showBootError();
       YtGameAdapter.logError();
     });
 
-    const onResize = () => engine.resize();
+    let resizeFrame = 0;
+    const onResize = () => {
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(() => engine.resize());
+    };
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(onResize) : null;
+    resizeObserver?.observe(canvas);
     window.addEventListener("resize", onResize);
+    window.visualViewport?.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
 
     return () => {
       disposed = true;
+      cancelAnimationFrame(resizeFrame);
+      resizeObserver?.disconnect();
       window.removeEventListener("resize", onResize);
+      window.visualViewport?.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
       removeAudioListener();
       removePauseListener();
       removeResumeListener();

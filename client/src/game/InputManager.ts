@@ -6,10 +6,12 @@ import { Engine } from "@babylonjs/core/Engines/engine";
 
 export class InputManager {
   private onCycle: () => void;
+  private onPause: () => void;
   private listeners: (() => void)[] = [];
 
-  constructor(onCycle: () => void) {
+  constructor(onCycle: () => void, onPause: () => void = () => undefined) {
     this.onCycle = onCycle;
+    this.onPause = onPause;
   }
 
   attach(engine: Engine, canvas: HTMLCanvasElement): void {
@@ -21,6 +23,9 @@ export class InputManager {
       if (e.code === "Space") {
         e.preventDefault();
         this.onCycle();
+      } else if (e.code === "Escape") {
+        // Escape is intentionally not prevented; Playables and browsers may use it too.
+        this.onPause();
       }
     };
 
